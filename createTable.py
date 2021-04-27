@@ -14,15 +14,14 @@ class DatabaseManager(object):
     def __init__(self, table):
         try:
             self.conn = mariadb.connect(
-                user="killb",
-                password="@0Z",
+                user="devs",
+                password="P@5s",
                 host="",
-                port=3306,
-                database=db)
+                port=3306)
         except mariadb.Error as e:
             print(f"Error connecting to MariaDB Platform: {e}")
             sys.exit(1)
-#        self.conn = sqlite3.connect(db)
+        self.conn.autocommit = True # Turn to False for manual commit and rollback
         self.cur = self.conn.cursor()
 
     def query(self, *arg, **kwargs):
@@ -31,23 +30,27 @@ class DatabaseManager(object):
     def querymany(self, *arg, **kwargs):
         self.cur.executemany(*arg, **kwargs)
         return self.cur
-    def rollback(self):
+    def rollback(self): # Only for manual commit
         self.conn.rollback()
 
     def __del__(self):
         self.conn.close()
 
+dbmgr = DatabaseManager("IA_Track")
 
 
-def selectall(dbmgr):
-    for row in dbmgr.query("select * FROM users;"):
-        print(row)
+def selectall(dbmgr, table="users"):
+    all = ""
+    for row in dbmgr.query("select * FROM " + table):
+        all += str(row) + "\n"
+        # print(row) # DEBUG
+    return all
 
 def callDB(table="IA_Track"):
     try:
-        dbmgr = DatabaseManager(db)
+        dbmgr.query("USE " + table + ";")
         dbmgr.query("""
-        CREATE TABLE if not exists users(
+        CREATE TABLE if not exists users (
             id INT PRIMARY KEY AUTO_INCREMENT not null,
             forname varchar(255),
             name varchar(255),
@@ -59,17 +62,18 @@ def callDB(table="IA_Track"):
         );
         """)
         dbmgr.query("""
-        CREATE TABLE if not exists party(
+        CREATE TABLE if not exists party (
             id INT PRIMARY KEY AUTO_INCREMENT not null,
             name varchar(255),
             creator_id int not null
         );
         """)
 
-        #data = [("jean", 23), ("olivier", 30), ("tom", 31)] 
-        #dbmgr.querymany("INSERT INTO users(name, age) VALUES(?, ?);", data)
-        #selectall(dbmgr)
-        return "OK"
+        #data =                             [("Phil",  "Plante", "phil.plante@gmail.com", None,  "@s89D@s",    False,   28)] 
+        #dbmgr.querymany("""INSERT INTO users(forname, name,     email,                   photo, spotify_token, premium, age)
+        #                              VALUES(?,       ?,         ?,                       ?,     ?,             ?,        ?);""", data)
+        all = selectall(dbmgr, "users")
+        return all
 
     except Exception as e:
         print(e)
@@ -79,9 +83,8 @@ def callDB(table="IA_Track"):
 @app.route('/')
 def hello():
     total = callDB()
-    print("TOTAL: ",total)
+    print("DEBUG: ",total)
     return total
-    return 'Hello, World!'
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8000)
