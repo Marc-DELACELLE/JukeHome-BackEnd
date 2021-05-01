@@ -72,7 +72,8 @@ def callDB():#db="IA_Track"):
             id_music varchar(255),
             music_name varchar(255),
             author_name varchar(255),
-            album_name varchar(255)
+            album_name varchar(255),
+            photo varchar(255)
         );
         """)
 
@@ -100,13 +101,13 @@ def hello():
 
 def createPlaylist(party_id):
     data = [
-        ("Fuego", "Alok", "Fuego"),
-        ("Au soleil", "Jenifer", "Jenifer"),
-        ("Old Town Road", "Lil Nas X", "7 EP"),
-        ("Bad boy", "Marwa Loud", "Loud")
+        ("0F7FA14euOIX8KcbEturGH", "again", "YUI", "HOLIDAYS IN THE SUN", "https://i.scdn.co/image/ab67616d00001e02fdec3ee19da7cd9b1b02ca9c"),
+        ("3J7L4214bjQfnry4dKjZZt",   "Au soleil", "Jenifer", "Jenifer",   "https://i.scdn.co/image/ab67616d00001e02a6c12adb15c4c621f9deae94"),
+        ("0F7FA14euOIX8KcbEturGH", "Old Town Road", "Lil Nas X", "7 EP",  "https://i.scdn.co/image/ab67616d00001e02c0e7bf5cdd630f314f20586a"),
+        ("0RE4crnT3jRms1xxVlEZx2",    "Bad boy", "Marwa Loud", "Loud",    "https://i.scdn.co/image/ab67616d00001e02ba3ad7241f4694bb278b5852")
     ]
-    dbmgr.querymany("""Insert Into music (party_id,       music_name, author_name, album_name)
-                                  VALUES ("""+party_id+", ?,          ?,           ?);", data)
+    dbmgr.querymany("""Insert Into music (party_id,       id_music, music_name, author_name, album_name, photo)
+                                  VALUES ("""+party_id+", ?, ?, ?, ?, ?);", data)
 
 @app.route('/playlist', methods = ['POST', 'GET'])
 def getPlaylist():
@@ -124,15 +125,13 @@ def getPlaylist():
         # print("Error: Bad Request")
         # return "Bad Request", 400
         spotify_token = "123456"
-        party_id = 1
+        party_id = "1"
     
     #createPlaylist(party_id)
 
     all = ""
-    for music in dbmgr.query("""Select music_name, author_name, album_name FROM music where party_id = ?;""", (party_id,)):
-        print(music)
+    for music in dbmgr.query("Select id_music, music_name, author_name, album_name, photo FROM music where party_id = ?;", (party_id,)):
         all += str(music)
-    print("ALL:", all)
     return all
 
 
