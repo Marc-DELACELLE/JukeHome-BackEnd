@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import mariadb
+import json
 from flask import Flask, request
 import sys
 
@@ -102,12 +103,26 @@ def hello():
 def createPlaylist(party_id):
     data = [
         ("0F7FA14euOIX8KcbEturGH", "again", "YUI", "HOLIDAYS IN THE SUN", "https://i.scdn.co/image/ab67616d00001e02fdec3ee19da7cd9b1b02ca9c"),
-        ("3J7L4214bjQfnry4dKjZZt",   "Au soleil", "Jenifer", "Jenifer",   "https://i.scdn.co/image/ab67616d00001e02a6c12adb15c4c621f9deae94"),
+        ("3vHswuqTNO0hIiW6am0tKB", "Les lacs du Connemara", "Michel Sardou", "Les Lacs Du Connemara", 
+                                                                          "https://i.scdn.co/image/ab67616d00001e028ce9b85d2c378387883c6cc0"),
+    #   ("3J7L4214bjQfnry4dKjZZt",   "Au soleil", "Jenifer", "Jenifer",   "https://i.scdn.co/image/ab67616d00001e02a6c12adb15c4c621f9deae94"),
         ("0F7FA14euOIX8KcbEturGH", "Old Town Road", "Lil Nas X", "7 EP",  "https://i.scdn.co/image/ab67616d00001e02c0e7bf5cdd630f314f20586a"),
         ("0RE4crnT3jRms1xxVlEZx2",    "Bad boy", "Marwa Loud", "Loud",    "https://i.scdn.co/image/ab67616d00001e02ba3ad7241f4694bb278b5852")
     ]
     dbmgr.querymany("""Insert Into music (party_id,       id_music, music_name, author_name, album_name, photo)
                                   VALUES ("""+party_id+", ?, ?, ?, ?, ?);", data)
+
+def jsonDump(cur):
+    all = []
+    data = []
+    for each in cur.description:
+        data += [each[0]]
+    for music in cur:
+        dico = {}
+        for each in range(len(music)):
+            dico[data[each]] = music[each]
+        all.append(dico)
+    return json.dumps(all)
 
 @app.route('/playlist', methods = ['POST', 'GET'])
 def getPlaylist():
@@ -129,10 +144,8 @@ def getPlaylist():
     
     #createPlaylist(party_id)
 
-    all = ""
-    for music in dbmgr.query("Select id_music, music_name, author_name, album_name, photo FROM music where party_id = ?;", (party_id,)):
-        all += str(music)
-    return all
+    return jsonDump(dbmgr.query("Select id_music, music_name, author_name, album_name, photo FROM music where party_id = ?;", (party_id,)))
+    
 
 
 #####                                     Select * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'users' and TABLE_SCHEMA = 'IA_Track';
