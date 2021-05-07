@@ -4,8 +4,46 @@ import mariadb
 import json
 from flask import Flask, request
 import sys
+from flask_ngrok import run_with_ngrok
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+import os
+from datetime import date
+
+
+os.environ["SPOTIPY_CLIENT_ID"] ='67234dda13844207a07446c5f1672ca6'
+os.environ["SPOTIPY_CLIENT_SECRET"] ='441888c387334f8fb4fa0728674ec80f'
 
 app = Flask(__name__)
+# run_with_ngrok(app) # Start ngrok when app is run
+
+#####################################################
+############/ _______      _____        \############
+###########/ |__   __|    |  __ \        \###########
+###########     | | ___   | |  | | ___    ###########
+###########     | |/ _ \  | |  | |/ _ \   ###########
+###########     | | (_) | | |__| | (_) |  ###########
+###########\    |_|\___/  |_____/ \___/  /###########
+############\                           /############
+#####################################################
+                                                   ##
+#toute les chansons(indexDebut, indexFin)          ## GET
+#current song                                      ## GET
+#toogle like user (nexts chansons)                 ## POST
+#vote up/down(chanson actuelle)                    ## POST
+#adresse QR code                                   ## GET
+                                                   ##
+# Nb de personnes dans la room--------------Done---## GET
+# Créer salon-------------------------------Done---## POST
+# Delete Salon user = 0                            ## GET
+# Quitter Salon                                    ## GET
+                                                   ##
+#log in-------------------------------------Done---## POST
+#log out /----------------------------------Done---## GET
+# Register----------------------------------Done---## POST
+                                                   ##
+#####################################################
+#####################################################
 
 class DatabaseManager(object):
     def __init__(self, table):
@@ -23,6 +61,7 @@ class DatabaseManager(object):
         self.cur = self.conn.cursor()
 
     def query(self, *arg, **kwargs):
+        print(arg, kwargs)
         self.cur.execute(*arg, **kwargs)
         return self.cur
     def querymany(self, *arg, **kwargs):
@@ -37,146 +76,119 @@ class DatabaseManager(object):
 dbmgr = DatabaseManager("IA_Track")
 
 
-def selectall(dbmgr, table="users"):
-    all = ""
-    for row in dbmgr.query("select * FROM " + table):
-        all += str(row) + "\n"
-        # print(row) # DEBUG
-    return all
-
-def callDB():#db="IA_Track"):
-    try:
-        #dbmgr.query("USE " + db + ";")
-        dbmgr.query("""
-        CREATE TABLE if not exists users (
-            id INT PRIMARY KEY AUTO_INCREMENT not null,
-            forname varchar(255),
-            name varchar(255),
-            email varchar(255),
-            photo blob default null,
-            spotify_token varchar(255),
-            premium boolean not null default False,
-            age tinyINT unsigned default null
-        );
-        """)
-        dbmgr.query("""
-        CREATE TABLE if not exists party (
-            id INT PRIMARY KEY AUTO_INCREMENT not null,
-            creator_id int not null,
-            name varchar(255)
-        );
-        """)
-        dbmgr.query("""
-        CREATE TABLE if not exists music (
-            id INT PRIMARY KEY AUTO_INCREMENT not null,
-            party_id int not null,
-            id_music varchar(255),
-            music_name varchar(255),
-            author_name varchar(255),
-            album_name varchar(255),
-            photo varchar(255)
-        );
-        """)
-
-        all = selectall(dbmgr, "users")
-        return all
-
-    except Exception as e:
-        print(e)
-        dbmgr.rollback()
-        # raise e
-
-@app.route('/insert')
-def testInsertUser():
-    data =                             [("Phil",  "Plante", "phil.plante@gmail.com", None,  "@s89D@s",     False,   28)]
-    dbmgr.querymany("""INSERT INTO users(forname, name,     email,                   photo, spotify_token, premium, age)
-                                  VALUES(?,       ?,        ?,                       ?,     ?,             ?,       ?);""", data)
-
-@app.route('/')
-def hello():
-    #data = {"name": "Jean", "forname": "Bitch", "spotify_token":"random", "email": "wesh" }
-    #total = callDB() 
-    total = addToTableUsers(name="Jean", forname= "Bitch", spotify_token=None, email= "wesh", age=11)
-    print("DEBUG: ",total)
-    return total
-
-def createPlaylist(party_id):
-    data = [
-        ("0F7FA14euOIX8KcbEturGH", "again", "YUI", "HOLIDAYS IN THE SUN", "https://i.scdn.co/image/ab67616d00001e02fdec3ee19da7cd9b1b02ca9c"),
-        ("3vHswuqTNO0hIiW6am0tKB", "Les lacs du Connemara", "Michel Sardou", "Les Lacs Du Connemara", 
-                                                                          "https://i.scdn.co/image/ab67616d00001e028ce9b85d2c378387883c6cc0"),
-    #   ("3J7L4214bjQfnry4dKjZZt",   "Au soleil", "Jenifer", "Jenifer",   "https://i.scdn.co/image/ab67616d00001e02a6c12adb15c4c621f9deae94"),
-        ("0F7FA14euOIX8KcbEturGH", "Old Town Road", "Lil Nas X", "7 EP",  "https://i.scdn.co/image/ab67616d00001e02c0e7bf5cdd630f314f20586a"),
-        ("0RE4crnT3jRms1xxVlEZx2",    "Bad boy", "Marwa Loud", "Loud",    "https://i.scdn.co/image/ab67616d00001e02ba3ad7241f4694bb278b5852")
-    ]
-    dbmgr.querymany("""Insert Into music (party_id,       id_music, music_name, author_name, album_name, photo)
-                                  VALUES ("""+party_id+", ?, ?, ?, ?, ?);", data)
-
-def jsonDump(cur):
-    all = []
-    data = []
-    for each in cur.description:
-        data += [each[0]]
-    for music in cur:
-        dico = {}
-        for each in range(len(music)):
-            dico[data[each]] = music[each]
-        all.append(dico)
-    return json.dumps(all)
-
-@app.route('/playlist', methods = ['POST', 'GET'])
-def getPlaylist():
-    if request.method == 'POST':
-        spotify_token = request.form['spotify_token']
-        party_id = request.form['party_id']
-    elif request.method == 'GET':
-        spotify_token = request.args.get('spotify_token')
-        party_id = request.args.get('party_id')
+@app.route('/createParty', methods = ['POST'])#, 'GET'])
+def createParty():
+    if request.method == 'POST': # Post
+        creator_id = request.form['creator_id']
+        name = request.form['name']
+    # Debug only
+    #elif request.method == 'GET':
+    #    creator_id = request.args.get('creator_id')
+    #    name = request.args.get('name')
     else:
-        print("Error: Not POST nor GET")
         return "Method Not Allowed", 405
 
-    if (not spotify_token or not party_id):
-        # print("Error: Bad Request")
-        # return "Bad Request", 400
-        spotify_token = "123456"
-        party_id = "1"
-    
-    #createPlaylist(party_id)
+    res = dbmgr.query("""Insert into party (creator_id, name) values (?, ?);""", (creator_id, name))
+    lastId = res.lastrowid
+    return "[{'party_id':'"+lastId+"'}]"
 
-    return jsonDump(dbmgr.query("Select id_music, music_name, author_name, album_name, photo FROM music where party_id = ?;", (party_id,)))
-    
+@app.route('/usersInRoom', methods = ['GET'])
+def usersInRoom():
+    if request.method == 'GET':
+        party_id = request.args.get('party_id')
+    else:
+        return "Method Not Allowed", 405
+    res = dbmgr.query("""Select coalesce(sum(user_id), 0) as nb_connected from connected where party_id = ?;""", (party_id,))
+    return jsonDump(res)
+
+@app.route('/logout', methods = ['GET'])
+def userLogout():
+    if request.method == 'GET':
+        user_id = request.args.get('user_id')
+    else:
+        return "Method Not Allowed", 405
+    res = dbmgr.query("""UPDATE connected SET online = False WHERE user_id = ?;""", (user_id,))
+    return "OK", 200
 
 
-#####                                     Select * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'users' and TABLE_SCHEMA = 'IA_Track';
+@app.route('/login', methods = ['POST'])#, 'GET'])
+def userLogin():
+    if request.method == 'POST':
+        email = request.form['email']
+        mdp = request.form['mdp']
+    # Debug only
+    #elif request.method == 'GET':
+    #    email = request.args.get('email')
+    #    mdp = request.args.get('mdp')
+    else:
+        return "Method Not Allowed", 405
+    res = dbmgr.query("Select *  from users WHERE email = ? and mdp = sha2(sha2(?, 512), 0);", (email, mdp)).fetchall()
+    if (res):
+        final = ""
+        for row in res:
+            final += str(row) + "\n"
+        return final, 200
+    else:
+        return "Unauthorized", 401
 
-#+---------------+--------------+------------+---------------+------------------+----------------+-------------+-----------+--------------------------+------------------------+-------------------+---------------+--------------------+--------------------+-------------------+---------------------+------------+----------------+---------------------------------+----------------+--------------+-----------------------+
-#| TABLE_CATALOG | TABLE_SCHEMA | TABLE_NAME | COLUMN_NAME   | ORDINAL_POSITION | COLUMN_DEFAULT | IS_NULLABLE | DATA_TYPE | CHARACTER_MAXIMUM_LENGTH | CHARACTER_OCTET_LENGTH | NUMERIC_PRECISION | NUMERIC_SCALE | DATETIME_PRECISION | CHARACTER_SET_NAME | COLLATION_NAME    | COLUMN_TYPE         | COLUMN_KEY | EXTRA          | PRIVILEGES                      | COLUMN_COMMENT | IS_GENERATED | GENERATION_EXPRESSION |
-#+---------------+--------------+------------+---------------+------------------+----------------+-------------+-----------+--------------------------+------------------------+-------------------+---------------+--------------------+--------------------+-------------------+---------------------+------------+----------------+---------------------------------+----------------+--------------+-----------------------+
-#| def           | IA_Track     | users      | id            |                1 | NULL           | NO          | int       |                     NULL |                   NULL |                10 |             0 |               NULL | NULL               | NULL              | int(11)             | PRI        | auto_increment | select,insert,update,references |                | NEVER        | NULL                  |
-#| def           | IA_Track     | users      | forname       |                2 | NULL           | YES         | varchar   |                      255 |                    255 |              NULL |          NULL |               NULL | latin1             | latin1_swedish_ci | varchar(255)        |            |                | select,insert,update,references |                | NEVER        | NULL                  |
-#| def           | IA_Track     | users      | name          |                3 | NULL           | YES         | varchar   |                      255 |                    255 |              NULL |          NULL |               NULL | latin1             | latin1_swedish_ci | varchar(255)        |            |                | select,insert,update,references |                | NEVER        | NULL                  |
-#| def           | IA_Track     | users      | email         |                4 | NULL           | YES         | varchar   |                      255 |                    255 |              NULL |          NULL |               NULL | latin1             | latin1_swedish_ci | varchar(255)        |            |                | select,insert,update,references |                | NEVER        | NULL                  |
-#| def           | IA_Track     | users      | photo         |                5 | NULL           | YES         | blob      |                    65535 |                  65535 |              NULL |          NULL |               NULL | NULL               | NULL              | blob                |            |                | select,insert,update,references |                | NEVER        | NULL                  |
-#| def           | IA_Track     | users      | spotify_token |                6 | NULL           | YES         | varchar   |                      255 |                    255 |              NULL |          NULL |               NULL | latin1             | latin1_swedish_ci | varchar(255)        |            |                | select,insert,update,references |                | NEVER        | NULL                  |
-#| def           | IA_Track     | users      | premium       |                7 | 0              | NO          | tinyint   |                     NULL |                   NULL |                 3 |             0 |               NULL | NULL               | NULL              | tinyint(1)          |            |                | select,insert,update,references |                | NEVER        | NULL                  |
-#| def           | IA_Track     | users      | age           |                8 | NULL           | YES         | tinyint   |                     NULL |                   NULL |                 3 |             0 |               NULL | NULL               | NULL              | tinyint(3) unsigned |            |                | select,insert,update,references |                | NEVER        | NULL                  |
-#+---------------+--------------+------------+---------------+------------------+----------------+-------------+-----------+--------------------------+------------------------+-------------------+---------------+--------------------+--------------------+-------------------+---------------------+------------+----------------+---------------------------------+----------------+--------------+-----------------------+
+@app.route('/register', methods = ['POST'])#, 'GET'])
+def userRegister():
+    data = {}
+    if request.method == 'POST':
+        data['email'] = request.form['email']
+        data['mdp'] = request.form['mdp']
+        data['forname'] = request.form['forname']
+        data['name'] = request.form['name']
+        data['photo'] = request.form['photo']
+        data['spotify_token'] = request.form['spotify_token']
+        data['premium'] = request.form['premium']
+        data['age'] = request.form['age']
+    # Debug only
+    #elif request.method == 'GET':
+    #    data['email'] = request.args.get('email')
+    #    data['mdp'] = request.args.get('mdp')
+    #    data['forname'] = request.args.get('forname')
+    #    data['name'] = request.args.get('name')
+    #    data['photo'] = request.args.get('photo')
+    #    data['spotify_token'] = request.args.get('spotify_token')
+    #    data['premium'] = request.args.get('premium')
+    #    data['age'] = request.args.get('age')
+    else:
+        return "Method Not Allowed", 405
+    res = dbmgr.query("Select 1 from users WHERE email = ?;", (data['email'],)).fetchall()
+    if (data['email'] and data['mdp'] and not res):
+        dbmgr.query("""INSERT INTO users(email, mdp, forname, name, photo, spotify_token, premium, age)
+        VALUES (%(email)s, sha2(sha2(%(mdp)s, 512), 0), COALESCE(%(forname)s, ''), COALESCE(%(name)s, ''), %(photo)s, %(spotify_token)s, COALESCE(%(premium)s, 0), %(age)s);""", data)
+        #date.fromisoformat('2019-12-04')
+        return "OK", 201
+    else:
+        return "KO", 409 # Potential Security Vulnerability for Client's Email (Brute force)
 
+
+
+@app.route('/')
+def index():
+    #data = {"name": "Jean", "forname": "Bitch", "spotify_token":"random", "email": "wesh" }
+    total = createAllTable()
+    #total = addToTableUsers(name="Jean", forname= "Bitch", spotify_token=None, email= "me@me.me", age=11)
+    #print("DEBUG: ",total)
+    return total
 
 def getInfoTable(table):
-    ret = dbmgr.query("Select COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + table + "' and TABLE_SCHEMA = 'IA_Track';")
+    ret = dbmgr.query("Select COLUMN_NAME, TABLE_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? and TABLE_SCHEMA = 'IA_Track';", (table,))
     mustHave = []
+    trueTable = ""
     for must in ret:
+        if not trueTable:
+            trueTable = must[1]
         mustHave += [must[0]] # Change [0] if it's not just COLUMN_NAME
-    return mustHave
+    return mustHave, trueTable
 
 def addToTable(table, mustInTable, *args, **kwargs):
     keys = ""
     values = ""
     for key,value in (kwargs.items()):
         print(key, ":", value)
-        
         if (key not in mustInTable):
             print("ERROR:", key, "not in table's columns!")
             return
@@ -202,8 +214,177 @@ def addToTableUsers(*args, **kwargs):
         addToTable(table, mustInTable, *args, **kwargs)
     return "addToTableUsers"
 
+
+def selectall(input="users"):
+    res, table = getInfoTable(input)
+    all = ""
+    if (not table):
+        print("ERROR")
+        return all
+    for row in dbmgr.query(f"SELECT * FROM {table};",):
+        all += str(row) + "\n"
+        # print(row) # DEBUG
+    return all
+
+def createAllTable():#db="IA_Track"):
+    try:
+        #dbmgr.query("USE " + db + ";")
+        dbmgr.query("""
+        CREATE TABLE if not exists users (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT not null,
+            mdp char(64),
+            forname varchar(255),
+            name varchar(255),
+            email varchar(255),
+            photo blob default null,
+            spotify_token varchar(255),
+            premium boolean null default False,
+            age date default null
+        );
+        """)
+        dbmgr.query("""
+        CREATE TABLE if not exists party (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT not null,
+            creator_id BIGINT not null,
+            name varchar(255)
+        );
+        """)
+        dbmgr.query("""
+        CREATE TABLE if not exists connected (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT not null,
+            party_id BIGINT not null,
+            user_id BIGINT not null,
+            online BOOLEAN not null default True,
+            name varchar(255)
+        );
+        """)
+        dbmgr.query("""
+        CREATE TABLE if not exists music (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT not null,
+            party_id BIGINT not null,
+            id_music char(22),
+            music_name varchar(255),
+            author_name varchar(255),
+            album_name varchar(255),
+            photo char(64)
+        );
+        """)
+
+        #all = selectall("users")
+        return "OK"
+
+    except Exception as e:
+        print(e)
+        dbmgr.rollback()
+        return "ERROR"
+        # raise e
+
+@app.route('/insert')
+def testInsertUser():
+    data =                             [("Phil",  "Plante", "phil.plante@gmail.com", None,  "@s89D@s",     False,   28)]
+    dbmgr.querymany("""INSERT INTO users(forname, name,     email,                   photo, spotify_token, premium, age)
+                                  VALUES(?,       ?,        ?,                       ?,     ?,             ?,       ?);""", data)
+
+@app.route('/playlist', methods = ['POST', 'GET'])
+def getPlaylist():
+    if request.method == 'POST':
+        spotify_token = request.form['spotify_token']
+        party_id = request.form['party_id']
+    elif request.method == 'GET':
+        spotify_token = request.args.get('spotify_token')
+        party_id = request.args.get('party_id')
+    else:
+        print("Error: Not POST nor GET")
+        return "Method Not Allowed", 405
+
+    if (not spotify_token or not party_id):
+        # print("Error: Bad Request")
+        # return "Bad Request", 400
+        spotify_token = "123456"
+        party_id = "1"
+
+    #createPlaylist(party_id)
+
+    return jsonDump(dbmgr.query("Select id_music, music_name, author_name, album_name, photo FROM music where party_id = ?;", (party_id,)))
+
+#data = [
+#    ("4OQq1bcP12GQQXJNupxqfR", "Again", "YUI", "HOLIDAYS IN THE SUN", "https://i.scdn.co/image/ab67616d00001e02fdec3ee19da7cd9b1b02ca9c"),
+#    ("0F7FA14euOIX8KcbEturGH", "Old Town Road", "Lil Nas X", "7 EP",  "https://i.scdn.co/image/ab67616d00001e02c0e7bf5cdd630f314f20586a"),
+#    ("2Fxmhks0bxGSBdJ92vM42m", "Bad Guy", "Billie Eilish", "WHEN WE ALL FALL ASLEEP, WHERE DO WE GO?", "https://i.scdn.co/image/ab67616d00001e0250a3147b4edd7701a876c6ce"),
+#    ("5ChkMS8OtdzJeqyybCc9R5", "Billie Jean", "Mickeal Jackson", "Thriller 25 Super Deluxe Edition", "https://i.scdn.co/image/ab67616d00001e024121faee8df82c526cbab2be"),
+#    ("4aR43dhmFwhcUikb5PyUKH", "Four", "Chill Bump", "Crumbs", "https://i.scdn.co/image/ab67616d00001e02ebe87a32cbd59019ea78ebef"),
+#    ("3vHswuqTNO0hIiW6am0tKB", "Les lacs du Connemara", "Michel Sardou", "Les Lacs Du Connemara", "https://i.scdn.co/image/ab67616d00001e028ce9b85d2c378387883c6cc0"),
+#    ("2ShTk16F2cHvhQtHGlxTR7", "Les démons de minuit", "Images", "Les Démons De Minuit", "https://i.scdn.co/image/ab67616d00001e02a54a8acf1bf370b3e0da0376"),
+#    ("2UC5XnHA1Wn9FjQmbjNca9", "L'aventurier", "Indochine", "L'aventurier", "https://i.scdn.co/image/ab67616d00001e02f80fe67d0f4293be5b8f5251"),
+#    ("0RE4crnT3jRms1xxVlEZx2",    "Bad boy", "Marwa Loud", "Loud",    "https://i.scdn.co/image/ab67616d00001e02ba3ad7241f4694bb278b5852"),
+#    ("3J7L4214bjQfnry4dKjZZt",   "Au soleil", "Jenifer", "Jenifer",   "https://i.scdn.co/image/ab67616d00001e02a6c12adb15c4c621f9deae94"),
+#]
+
+def createPlaylist(party_id):
+
+
+    spotify = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
+
+    data = [ # IDK HOW TO GET IT :)
+        "4OQq1bcP12GQQXJNupxqfR",
+        "0F7FA14euOIX8KcbEturGH",
+        "2Fxmhks0bxGSBdJ92vM42m",
+        "5ChkMS8OtdzJeqyybCc9R5",
+        "4aR43dhmFwhcUikb5PyUKH",
+        "3vHswuqTNO0hIiW6am0tKB",
+        "2ShTk16F2cHvhQtHGlxTR7",
+        "2UC5XnHA1Wn9FjQmbjNca9",
+    ]
+
+    results = spotify.tracks(data, market="FR")["tracks"]
+
+    res = []
+    for track in results:
+        if (not track["artists"]):
+            return 84
+        if (not track["album"] or not track["album"]["images"]):
+            return 84
+        #print("name:", track["name"])
+        #print("id:", track["id"])
+        #print("artist:", track["artists"][0]["name"])
+        #print("album:", track["album"]["name"])
+        #print()
+        res += [(track["id"], track["name"], track["artists"][0]["name"], track["album"]["name"], track["album"]["images"][0]["url"])]
+    dbmgr.querymany("""Insert Into music (party_id, id_music, music_name, author_name, album_name, photo)
+                                  VALUES ("""+party_id+", ?, ?, ?, ?, ?);", res)
+
+def jsonDump(cur):
+    all = []
+    data = []
+    for each in cur.description:
+        data += [each[0]]
+    for music in cur:
+        dico = {}
+        for each in range(len(music)):
+            dico[data[each]] = str(music[each])
+        all.append(dico)
+    return json.dumps(all)
+
+
+
+
+#####                                     Select * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'users' and TABLE_SCHEMA = 'IA_Track';
+
+#+---------------+--------------+------------+---------------+------------------+----------------+-------------+-----------+--------------------------+------------------------+-------------------+---------------+--------------------+--------------------+-------------------+---------------------+------------+----------------+---------------------------------+----------------+--------------+-----------------------+
+#| TABLE_CATALOG | TABLE_SCHEMA | TABLE_NAME | COLUMN_NAME   | ORDINAL_POSITION | COLUMN_DEFAULT | IS_NULLABLE | DATA_TYPE | CHARACTER_MAXIMUM_LENGTH | CHARACTER_OCTET_LENGTH | NUMERIC_PRECISION | NUMERIC_SCALE | DATETIME_PRECISION | CHARACTER_SET_NAME | COLLATION_NAME    | COLUMN_TYPE         | COLUMN_KEY | EXTRA          | PRIVILEGES                      | COLUMN_COMMENT | IS_GENERATED | GENERATION_EXPRESSION |
+#+---------------+--------------+------------+---------------+------------------+----------------+-------------+-----------+--------------------------+------------------------+-------------------+---------------+--------------------+--------------------+-------------------+---------------------+------------+----------------+---------------------------------+----------------+--------------+-----------------------+
+#| def           | IA_Track     | users      | id            |                1 | NULL           | NO          | int       |                     NULL |                   NULL |                10 |             0 |               NULL | NULL               | NULL              | int(11)             | PRI        | auto_increment | select,insert,update,references |                | NEVER        | NULL                  |
+#| def           | IA_Track     | users      | forname       |                2 | NULL           | YES         | varchar   |                      255 |                    255 |              NULL |          NULL |               NULL | latin1             | latin1_swedish_ci | varchar(255)        |            |                | select,insert,update,references |                | NEVER        | NULL                  |
+#| def           | IA_Track     | users      | name          |                3 | NULL           | YES         | varchar   |                      255 |                    255 |              NULL |          NULL |               NULL | latin1             | latin1_swedish_ci | varchar(255)        |            |                | select,insert,update,references |                | NEVER        | NULL                  |
+#| def           | IA_Track     | users      | email         |                4 | NULL           | YES         | varchar   |                      255 |                    255 |              NULL |          NULL |               NULL | latin1             | latin1_swedish_ci | varchar(255)        |            |                | select,insert,update,references |                | NEVER        | NULL                  |
+#| def           | IA_Track     | users      | photo         |                5 | NULL           | YES         | blob      |                    65535 |                  65535 |              NULL |          NULL |               NULL | NULL               | NULL              | blob                |            |                | select,insert,update,references |                | NEVER        | NULL                  |
+#| def           | IA_Track     | users      | spotify_token |                6 | NULL           | YES         | varchar   |                      255 |                    255 |              NULL |          NULL |               NULL | latin1             | latin1_swedish_ci | varchar(255)        |            |                | select,insert,update,references |                | NEVER        | NULL                  |
+#| def           | IA_Track     | users      | premium       |                7 | 0              | NO          | tinyint   |                     NULL |                   NULL |                 3 |             0 |               NULL | NULL               | NULL              | tinyint(1)          |            |                | select,insert,update,references |                | NEVER        | NULL                  |
+#| def           | IA_Track     | users      | age           |                8 | NULL           | YES         | tinyint   |                     NULL |                   NULL |                 3 |             0 |               NULL | NULL               | NULL              | tinyint(3) unsigned |            |                | select,insert,update,references |                | NEVER        | NULL                  |
+#+---------------+--------------+------------+---------------+------------------+----------------+-------------+-----------+--------------------------+------------------------+-------------------+---------------+--------------------+--------------------+-------------------+---------------------+------------+----------------+---------------------------------+----------------+--------------+-----------------------+
+
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=8000)
+    app.run()
 
 #def a():
 #    print ("file")
@@ -217,8 +398,9 @@ if __name__ == "__main__":
 #
 #@call_a_after
 #def b(ahah,jpp, slt = ""):
-#    print (ahah)  
-#    print (jpp)  
-#    print ("hello")  
+#    print (ahah
+#    print (jpp
+#    print ("hello"
 #    return slt
+
 
