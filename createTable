@@ -27,19 +27,23 @@ app = Flask(__name__)
 ############\                           /############
 #####################################################
                                                    ##
-#toute les chansons(indexDebut, indexFin)          ## GET
-#current song                                      ## GET
-#toogle like user (nexts chansons)                 ## POST
-#vote up/down(chanson actuelle)                    ## POST
-#adresse QR code                                   ## GET
+# All music(indexDebut, indexFin)                  ## GET
+# current song                                     ## GET
+# toogle like user (nexts chansons)                ## POST
+# vote up/down(chanson actuelle)                   ## POST
+# adresse QR code                                  ## GET
                                                    ##
 # Nb de personnes dans la room--------------Done---## GET
 # Créer salon-------------------------------Done---## POST
-# Delete Salon user = 0                            ## GET
-# Quitter Salon                                    ## GET
+# Delete Salon when creator leave-----------Done---## GET
+# Quitter Salon-----------------------------Done---## GET
+# Join Salon--------------------------------Done---## GET
                                                    ##
-#log in-------------------------------------Done---## POST
-#log out /----------------------------------Done---## GET
+# Offline Salon                                    ## GET
+# Online Salon                                     ## GET
+# log out------------------------------MAYBE NOT---## GET
+                                                   ##
+# log in------------------------------------Done---## POST
 # Register----------------------------------Done---## POST
                                                    ##
 #####################################################
@@ -76,6 +80,76 @@ class DatabaseManager(object):
 dbmgr = DatabaseManager("IA_Track")
 
 
+
+
+@app.route('/reconnectParty', methods = ['GET'])
+def onlineParty():
+    if request.method == 'GET':
+        party_id = request.args.get('party_id')
+        user_id = request.args.get('user_id') # Current activity and Front saved last party if "logout" 
+    else:
+        return "Method Not Allowed", 405
+    res = dbmgr.query("""update connected set online = TRUE and current = FALSE where party_id = ? and user_id = ?;""", (party_id, user_id))
+    return "OK", 200
+
+@app.route('/disconnectParty', methods = ['GET'])
+def offlineParty():
+    if request.method == 'GET':
+        party_id = request.args.get('party_id') # useless ?
+        user_id = request.args.get('user_id')
+    else:
+        return "Method Not Allowed", 405
+    res = dbmgr.query("""update connected set online = FALSE and current = FALSE where party_id = ? and user_id = ?;""", (party_id, user_id))
+    return "OK", 200
+
+@app.route('/logout', methods = ['GET'])
+def userLogout():
+    if request.method == 'GET':
+        user_id = request.args.get('user_id')
+    else:
+        return "Method Not Allowed", 405
+    res = dbmgr.query("""UPDATE connected SET online = False WHERE user_id = ?;""", (user_id,))
+    return "OK", 200
+
+
+
+
+
+@app.route('/leaveParty', methods = ['GET'])
+def leaveParty():
+    if request.method == 'GET':
+        party_id = request.args.get('party_id')
+        user_id = request.args.get('user_id')
+    else:
+        return "Method Not Allowed", 405
+    res = dbmgr.query("""Delete from connected where party_id = ? and user_id = ?;""", (party_id, user_id))
+    return "OK", 200
+
+@app.route('/deleteParty', methods = ['GET'])
+def deleteParty(): 
+    if request.method == 'GET':
+        party_id = request.args.get('party_id')
+        creator_id = request.args.get('creator_id')
+    else:
+        return "Method Not Allowed", 405
+    res = dbmgr.query("""Delete from party where id = ? and creator_id = ?;""", (party_id, creator_id))
+    res = dbmgr.query("""Delete from connected where party_id = ?;""", (party_id,))
+    return "OK", 200
+
+
+
+@app.route('/joinParty', methods = ['GET'])
+def joinParty():
+    if request.method == 'GET': # Post
+        party_id = request.args.get('party_id')
+        user_id = request.args.get('user_id')
+        name = request.args.get('name')
+    else:
+        return "Method Not Allowed", 405
+
+    res = dbmgr.query("""Insert into connected (party_id, user_id, name) values (?, ?, ?);""", (creator_id, user_id, name))
+    return "OK", 200
+
 @app.route('/createParty', methods = ['POST'])#, 'GET'])
 def createParty():
     if request.method == 'POST': # Post
@@ -88,7 +162,7 @@ def createParty():
     else:
         return "Method Not Allowed", 405
 
-    res = dbmgr.query("""Insert into party (creator_id, name) values (?, ?);""", (creator_id, name))
+    res = dbmgr.query("""Insert into party (creator_id, name) values (?, ?);""", (creator_id, name)) # Auto call joinParty ?
     lastId = res.lastrowid
     return "[{'party_id':'"+lastId+"'}]"
 
@@ -100,15 +174,6 @@ def usersInRoom():
         return "Method Not Allowed", 405
     res = dbmgr.query("""Select coalesce(sum(user_id), 0) as nb_connected from connected where party_id = ?;""", (party_id,))
     return jsonDump(res)
-
-@app.route('/logout', methods = ['GET'])
-def userLogout():
-    if request.method == 'GET':
-        user_id = request.args.get('user_id')
-    else:
-        return "Method Not Allowed", 405
-    res = dbmgr.query("""UPDATE connected SET online = False WHERE user_id = ?;""", (user_id,))
-    return "OK", 200
 
 
 @app.route('/login', methods = ['POST'])#, 'GET'])
@@ -122,12 +187,9 @@ def userLogin():
     #    mdp = request.args.get('mdp')
     else:
         return "Method Not Allowed", 405
-    res = dbmgr.query("Select *  from users WHERE email = ? and mdp = sha2(sha2(?, 512), 0);", (email, mdp)).fetchall()
+    res = dbmgr.query("Select * from users WHERE email = ? and mdp = sha2(sha2(?, 512), 0);", (email, mdp)).fetchall()
     if (res):
-        final = ""
-        for row in res:
-            final += str(row) + "\n"
-        return final, 200
+        return jsonDump(res), 200
     else:
         return "Unauthorized", 401
 
@@ -349,9 +411,9 @@ def createPlaylist(party_id):
         #print("artist:", track["artists"][0]["name"])
         #print("album:", track["album"]["name"])
         #print()
-        res += [(track["id"], track["name"], track["artists"][0]["name"], track["album"]["name"], track["album"]["images"][0]["url"])]
+        res += [(party_id, track["id"], track["name"], track["artists"][0]["name"], track["album"]["name"], track["album"]["images"][0]["url"])]
     dbmgr.querymany("""Insert Into music (party_id, id_music, music_name, author_name, album_name, photo)
-                                  VALUES ("""+party_id+", ?, ?, ?, ?, ?);", res)
+                                  VALUES (?, ?, ?, ?, ?, ?);""", res)
 
 def jsonDump(cur):
     all = []
@@ -385,6 +447,7 @@ def jsonDump(cur):
 
 if __name__ == "__main__":
     app.run()
+    #app.run(host='0.0.0.0', port=8000)
 
 #def a():
 #    print ("file")
